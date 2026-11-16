@@ -10,19 +10,12 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  
-  # Рисование
-  perfect_freehand: ^2.3.1        
-  # Экспорт PDF
+  perfect_freehand: ^2.3.1
   pdf: ^3.10.8
   printing: ^5.12.0
   path_provider: ^2.1.2
-  
-  # Хранение
   shared_preferences: ^2.2.2
   uuid: ^4.3.3
-  
-  # Состояние
   provider: ^6.1.1
 
 dev_dependencies:

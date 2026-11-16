@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -8,82 +9,92 @@ import 'package:printing/printing.dart';
 import '../models/draw_element.dart';
 import '../models/note_page.dart';
 
-class PdfExport {
-  static const double _pageWidth = 595;
-  static const double _pageHeight = 842;
-  static const double _margin = 24;
-  static const double _cellSize = 24;
+import 'pdf_download_web.dart'
+    if (dart.library.io) 'pdf_download_stub.dart'
+    if (dart.library.html) 'pdf_download_web.dart';
 
+class PdfExport {
   static Future<void> exportPage(NotePage page) async {
     final bytes = await buildPdf(page);
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: '${_safeFilename(page.title)}.pdf',
-    );
+    final filename = '${_safeFilename(page.title)}.pdf';
+
+    if (kIsWeb) {
+      downloadPdfOnWeb(bytes, filename);
+    } else {
+      await Printing.sharePdf(bytes: bytes, filename: filename);
+    }
   }
 
   static Future<Uint8List> buildPdf(NotePage page) async {
     final doc = pw.Document();
+    const cellSize = 24.0;
 
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(_margin),
-        build: (ctx) {
-          const contentWidth = _pageWidth - _margin * 2;
-          const contentHeight = _pageHeight - _margin * 2;
+    for (var i = 0; i < page.pages.length; i++) {
+      final canvasPage = page.pages[i];
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          build: (ctx) {
+            final aspect = page.canvasWidth / page.canvasHeight;
+            const availableWidth = 595.0 - 48;
+            const availableHeight = 842.0 - 48;
+            const headerHeight = 30.0;
+            final maxH = availableHeight - headerHeight;
+            double w = availableWidth;
+            double h = w / aspect;
+            if (h > maxH) {
+              h = maxH;
+              w = h * aspect;
+            }
 
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                page.title,
-                style: pw.TextStyle(
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'Page ${i + 1}',
+                  style: pw.TextStyle(
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              ),
-              pw.SizedBox(height: 8),
-              pw.Container(
-                width: contentWidth,
-                height: contentHeight - 30,
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                pw.SizedBox(height: 8),
+                pw.Container(
+                  width: w,
+                  height: h,
+                  decoration: pw.BoxDecoration(
+                    border:
+                        pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                  ),
+                  child: pw.CustomPaint(
+                    size: PdfPoint(w, h),
+                    painter: (canvas, size) {
+                      _paintGrid(canvas, size, cellSize);
+                      for (final e in canvasPage.elements) {
+                        _paintElement(canvas, size, e);
+                      }
+                    },
+                  ),
                 ),
-                child: pw.Stack(
-                  children: [
-                    pw.Positioned.fill(
-                      child: pw.CustomPaint(
-                        size: PdfPoint(contentWidth, contentHeight),
-                        painter: (canvas, size) {
-                          _paintGrid(canvas, size);
-                          for (final e in page.elements) {
-                            _paintElement(canvas, size, e);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+              ],
+            );
+          },
+        ),
+      );
+    }
 
     return doc.save();
   }
 
-  static void _paintGrid(PdfGraphics canvas, PdfPoint size) {
+  static void _paintGrid(PdfGraphics canvas, PdfPoint size, double cellSize) {
     final minor = PdfColor.fromInt(0xFFD9E3F0);
     final major = PdfColor.fromInt(0xFFB7C7DE);
 
-    final cols = (size.x / _cellSize).ceil();
-    final rows = (size.y / _cellSize).ceil();
+    final cols = (size.x / cellSize).ceil();
+    final rows = (size.y / cellSize).ceil();
 
     for (var i = 1; i < cols; i++) {
-      final x = i * _cellSize;
+      final x = i * cellSize;
       canvas
         ..setStrokeColor(i % 5 == 0 ? major : minor)
         ..setLineWidth(i % 5 == 0 ? 0.6 : 0.3)
@@ -91,9 +102,8 @@ class PdfExport {
         ..lineTo(x, size.y)
         ..strokePath();
     }
-
     for (var j = 1; j < rows; j++) {
-      final y = j * _cellSize;
+      final y = j * cellSize;
       canvas
         ..setStrokeColor(j % 5 == 0 ? major : minor)
         ..setLineWidth(j % 5 == 0 ? 0.6 : 0.3)
@@ -143,11 +153,7 @@ class PdfExport {
         canvas
           ..setFillColor(color)
           ..drawEllipse(
-            pts.first.x,
-            pts.first.y,
-            e.strokeWidth / 2,
-            e.strokeWidth / 2,
-          )
+              pts.first.x, pts.first.y, e.strokeWidth / 2, e.strokeWidth / 2)
           ..fillPath();
         return;
       }

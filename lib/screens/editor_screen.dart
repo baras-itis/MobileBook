@@ -26,16 +26,19 @@ class _EditorScreenState extends State<EditorScreen> {
   Color _color = Colors.black;
   double _strokeWidth = 3.0;
 
+  int _canvasIndex = 0;
   late List<DrawElement> _elements;
   DrawElement? _current;
-
   Timer? _saveDebounce;
+  String? _currentCanvasPageId;
 
   @override
   void initState() {
     super.initState();
     final page = context.read<PageProvider>().findById(widget.pageId);
-    _elements = List.of(page?.elements ?? const <DrawElement>[]);
+    final canvasPage = page?.pages[_canvasIndex];
+    _currentCanvasPageId = canvasPage?.id;
+    _elements = List.of(canvasPage?.elements ?? const <DrawElement>[]);
   }
 
   @override
@@ -46,12 +49,39 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _flushSave() {
-    context.read<PageProvider>().updateElements(widget.pageId, _elements);
+    final id = _currentCanvasPageId;
+    if (id == null) return;
+    context.read<PageProvider>().updateElements(widget.pageId, id, _elements);
   }
 
   void _scheduleSave() {
     _saveDebounce?.cancel();
     _saveDebounce = Timer(const Duration(milliseconds: 400), _flushSave);
+  }
+
+  void _switchToCanvas(int index) {
+    _flushSave();
+    _saveDebounce?.cancel();
+    final page = context.read<PageProvider>().findById(widget.pageId);
+    if (page == null) return;
+    if (index < 0 || index >= page.pages.length) return;
+    final cp = page.pages[index];
+    setState(() {
+      _canvasIndex = index;
+      _currentCanvasPageId = cp.id;
+      _elements = List.of(cp.elements);
+      _current = null;
+    });
+  }
+
+  Future<void> _addCanvasPage() async {
+    _flushSave();
+    final newPage =
+        await context.read<PageProvider>().addCanvasPage(widget.pageId);
+    final page = context.read<PageProvider>().findById(widget.pageId);
+    if (page == null) return;
+    final idx = page.pages.indexWhere((cp) => cp.id == newPage.id);
+    _switchToCanvas(idx);
   }
 
   void _onStrokeStart(Offset p) {
@@ -64,38 +94,27 @@ class _EditorScreenState extends State<EditorScreen> {
       switch (_tool) {
         case ToolType.pen:
           _current = StrokeElement(
-            id: id,
-            color: _color,
-            strokeWidth: _strokeWidth,
-            points: [p],
-          );
+              id: id, color: _color, strokeWidth: _strokeWidth, points: [p]);
           break;
         case ToolType.line:
           _current = LineElement(
-            id: id,
-            color: _color,
-            strokeWidth: _strokeWidth,
-            start: p,
-            end: p,
-          );
+              id: id, color: _color, strokeWidth: _strokeWidth, start: p, end: p);
           break;
         case ToolType.rectangle:
           _current = RectangleElement(
-            id: id,
-            color: _color,
-            strokeWidth: _strokeWidth,
-            topLeft: p,
-            bottomRight: p,
-          );
+              id: id,
+              color: _color,
+              strokeWidth: _strokeWidth,
+              topLeft: p,
+              bottomRight: p);
           break;
         case ToolType.circle:
           _current = CircleElement(
-            id: id,
-            color: _color,
-            strokeWidth: _strokeWidth,
-            center: p,
-            radius: 0,
-          );
+              id: id,
+              color: _color,
+              strokeWidth: _strokeWidth,
+              center: p,
+              radius: 0);
           break;
         case ToolType.eraser:
           break;
@@ -110,7 +129,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
     final cur = _current;
     if (cur == null) return;
-
     setState(() {
       if (cur is StrokeElement) {
         _current = StrokeElement(
@@ -158,7 +176,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _eraseAt(Offset p) {
-    final hitThreshold = 14.0;
+    const hitThreshold = 14.0;
     final before = _elements.length;
     setState(() {
       _elements = _elements.where((e) {
@@ -228,6 +246,10 @@ class _EditorScreenState extends State<EditorScreen> {
     if (page == null) {
       return const Scaffold(body: Center(child: Text('Страница не найдена')));
     }
+    if (_canvasIndex >= page.pages.length) {
+      _canvasIndex = page.pages.length - 1;
+    }
+    final canvasPage = page.pages[_canvasIndex];
 
     return Scaffold(
       appBar: AppBar(
@@ -252,15 +274,33 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
       body: Column(
         children: [
+          _pageSwitcher(page),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: DrawingCanvas(
-                elements: _elements,
-                current: _current,
-                onStrokeStart: _onStrokeStart,
-                onStrokeUpdate: _onStrokeUpdate,
-                onStrokeEnd: _onStrokeEnd,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = Size(
+                    constraints.maxWidth - 16,
+                    constraints.maxHeight - 16,
+                  );
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    context.read<PageProvider>().updateCanvasSize(
+                          widget.pageId,
+                          size.width,
+                          size.height,
+                        );
+                  });
+                  return DrawingCanvas(
+                    pageId: widget.pageId,
+                    canvasPageId: canvasPage.id,
+                    elements: _elements,
+                    current: _current,
+                    onStrokeStart: _onStrokeStart,
+                    onStrokeUpdate: _onStrokeUpdate,
+                    onStrokeEnd: _onStrokeEnd,
+                  );
+                },
               ),
             ),
           ),
@@ -276,8 +316,102 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
-}
 
-// NotePage используется только для типа page в build — импорт нужен для явности.
-// ignore: unused_element
-typedef _PageRef = NotePage;
+  Widget _pageSwitcher(NotePage page) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: page.pages.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (_, i) {
+                final selected = i == _canvasIndex;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _switchToCanvas(i),
+                  child: Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? const Color(0xFFEEF2FF)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Стр. ${i + 1}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w400,
+                        color: selected
+                            ? const Color(0xFF2F6BFF)
+                            : Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          IconButton(
+            tooltip: 'Удалить страницу',
+            icon: const Icon(Icons.remove_circle_outline, size: 20),
+            onPressed: page.pages.length <= 1
+                ? null
+                : () => _deleteCanvasPage(page),
+          ),
+          IconButton(
+            tooltip: 'Добавить страницу',
+            icon: const Icon(Icons.add_circle_outline, size: 20),
+            onPressed: _addCanvasPage,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteCanvasPage(NotePage page) async {
+    _flushSave();
+    final cp = page.pages[_canvasIndex];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить страницу?'),
+        content: Text('Страница ${_canvasIndex + 1} будет удалена.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await context.read<PageProvider>().deleteCanvasPage(widget.pageId, cp.id);
+    if (_canvasIndex >= page.pages.length - 1) {
+      _canvasIndex = page.pages.length - 2;
+    }
+    final updated = context.read<PageProvider>().findById(widget.pageId);
+    if (updated == null) return;
+    final newCp = updated.pages[_canvasIndex];
+    setState(() {
+      _currentCanvasPageId = newCp.id;
+      _elements = List.of(newCp.elements);
+      _current = null;
+    });
+  }
+}

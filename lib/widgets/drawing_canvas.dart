@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/draw_element.dart';
 
 class DrawingCanvas extends StatelessWidget {
+  final String pageId;
+  final String canvasPageId;
   final List<DrawElement> elements;
   final DrawElement? current;
   final ValueChanged<Offset> onStrokeStart;
@@ -11,6 +13,8 @@ class DrawingCanvas extends StatelessWidget {
 
   const DrawingCanvas({
     super.key,
+    required this.pageId,
+    required this.canvasPageId,
     required this.elements,
     required this.current,
     required this.onStrokeStart,
@@ -73,7 +77,6 @@ class _CanvasPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     _drawGrid(canvas, size);
-
     for (final e in elements) {
       _drawElement(canvas, size, e);
     }
@@ -96,13 +99,13 @@ class _CanvasPainter extends CustomPainter {
 
     for (var i = 1; i < cols; i++) {
       final x = i * _cellSize;
-      final paint = i % 5 == 0 ? major : minor;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      canvas.drawLine(
+          Offset(x, 0), Offset(x, size.height), i % 5 == 0 ? major : minor);
     }
     for (var j = 1; j < rows; j++) {
       final y = j * _cellSize;
-      final paint = j % 5 == 0 ? major : minor;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      canvas.drawLine(
+          Offset(0, y), Offset(size.width, y), j % 5 == 0 ? major : minor);
     }
   }
 
@@ -122,15 +125,10 @@ class _CanvasPainter extends CustomPainter {
       _drawStroke(canvas, size, e);
     } else if (e is LineElement) {
       canvas.drawLine(
-        _denorm(e.start, size),
-        _denorm(e.end, size),
-        _strokePaint(e),
-      );
+          _denorm(e.start, size), _denorm(e.end, size), _strokePaint(e));
     } else if (e is RectangleElement) {
       final rect = Rect.fromPoints(
-        _denorm(e.topLeft, size),
-        _denorm(e.bottomRight, size),
-      );
+          _denorm(e.topLeft, size), _denorm(e.bottomRight, size));
       canvas.drawRect(rect, _strokePaint(e));
     } else if (e is CircleElement) {
       final center = _denorm(e.center, size);
@@ -146,7 +144,6 @@ class _CanvasPainter extends CustomPainter {
       canvas.drawCircle(p, e.strokeWidth / 2, Paint()..color = e.color);
       return;
     }
-
     final path = Path();
     final pts = e.points.map((p) => _denorm(p, size)).toList();
     path.moveTo(pts.first.dx, pts.first.dy);
@@ -158,7 +155,6 @@ class _CanvasPainter extends CustomPainter {
       path.quadraticBezierTo(pts[i].dx, pts[i].dy, mid.dx, mid.dy);
     }
     path.lineTo(pts.last.dx, pts.last.dy);
-
     canvas.drawPath(path, _strokePaint(e));
   }
 

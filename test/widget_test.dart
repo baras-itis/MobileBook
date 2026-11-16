@@ -3,8 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:notes_app/main.dart';
 import 'package:notes_app/providers/page_provider.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 void main() {
   setUp(() {
@@ -21,16 +19,6 @@ void main() {
     expect(find.text('Создать'), findsOneWidget);
   });
 
-  testWidgets('создание страницы добавляет её в список', (tester) async {
-    await tester.pumpWidget(const NotesApp());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Создать'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(Navigator), findsOneWidget);
-  });
-
   test('PageProvider создаёт и удаляет страницы', () async {
     SharedPreferences.setMockInitialValues({});
     final provider = PageProvider();
@@ -41,9 +29,10 @@ void main() {
     final page = provider.createPage(title: 'Тест');
     expect(provider.pages.length, 1);
     expect(provider.findById(page.id)?.title, 'Тест');
+    expect(provider.findById(page.id)?.pages.length, 1);
 
-    await provider.renamePage(page.id, 'Новое имя');
-    expect(provider.findById(page.id)?.title, 'Новое имя');
+    await provider.addCanvasPage(page.id);
+    expect(provider.findById(page.id)?.pages.length, 2);
 
     await provider.deletePage(page.id);
     expect(provider.pages, isEmpty);

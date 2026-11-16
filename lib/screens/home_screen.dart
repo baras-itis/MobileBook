@@ -28,24 +28,20 @@ class HomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   itemCount: provider.pages.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) {
-                    final page = provider.pages[i];
-                    return _PageTile(page: page);
-                  },
+                  itemBuilder: (context, i) =>
+                      _PageTile(page: provider.pages[i]),
                 ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openNewPage(context),
+        onPressed: () {
+          final page = context.read<PageProvider>().createPage();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+                builder: (_) => EditorScreen(pageId: page.id)),
+          );
+        },
         icon: const Icon(Icons.add),
         label: const Text('Создать'),
       ),
-    );
-  }
-
-  void _openNewPage(BuildContext context) {
-    final provider = context.read<PageProvider>();
-    final page = provider.createPage();
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EditorScreen(pageId: page.id)),
     );
   }
 }
@@ -59,21 +55,14 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.menu_book_outlined,
-            size: 64,
-            color: Colors.grey.shade400,
-          ),
+          Icon(Icons.menu_book_outlined,
+              size: 64, color: Colors.grey.shade400),
           const SizedBox(height: 12),
-          Text(
-            'Пока нет ни одной страницы',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
-          ),
+          Text('Пока нет ни одной страницы',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
           const SizedBox(height: 4),
-          Text(
-            'Нажмите «Создать», чтобы начать',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-          ),
+          Text('Нажмите «Создать», чтобы начать',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
         ],
       ),
     );
@@ -87,18 +76,16 @@ class _PageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final total = page.pages.fold<int>(
+        0, (sum, cp) => sum + cp.elements.length);
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => EditorScreen(pageId: page.id),
-            ),
-          );
-        },
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => EditorScreen(pageId: page.id)),
+        ),
         onLongPress: () => _showActions(context),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -111,7 +98,8 @@ class _PageTile extends StatelessWidget {
                   color: const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.description_outlined, color: Color(0xFF2F6BFF)),
+                child: const Icon(Icons.description_outlined,
+                    color: Color(0xFF2F6BFF)),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -123,17 +111,13 @@ class _PageTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
+                          fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${page.elements.length} элем. • ${_formatDate(page.updatedAt)}',
+                      '${page.pages.length} стр. • $total элем. • ${_formatDate(page.updatedAt)}',
                       style: TextStyle(
-                        fontSize: 12.5,
-                        color: Colors.grey.shade600,
-                      ),
+                          fontSize: 12.5, color: Colors.grey.shade600),
                     ),
                   ],
                 ),
@@ -175,7 +159,8 @@ class _PageTile extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Удалить', style: TextStyle(color: Colors.red)),
+              title:
+                  const Text('Удалить', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
                 _confirmDelete(context);
